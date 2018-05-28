@@ -112,8 +112,6 @@ print "rank matrix: ", rank_ID[0]
 #     return(BIC)
 
 
-
-# IRIS DATA
 # iris = sklearn.datasets.load_iris()
 # X = iris.data[:, :4]  # extract only the features
 Xlist = []
