@@ -27,11 +27,22 @@ start_time = time.time()
 
 # Get the path of the training set
 parser = ap.ArgumentParser()
-parser.add_argument("-i", "--pool", help="Path to query image pool", required="True")
+parser.add_argument("-i", "--pool", help="Path to query image pool", required=True)
+parser.add_argument("-b", "--low_threshold", help="Floor value", required=False)
+parser.add_argument("-t", "--high_threshold", help="Ceiling value", required=False)
+parser.add_argument("-p", "--percentage", help="limit numbers", required=False)
+parser.add_argument("-v", "--verbose")
+
 args = vars(parser.parse_args())
 
 # Get query image path
 pool_path = args["pool"]
+low_threshold = float(args["low_threshold"]) if args["low_threshold"] else 0.15
+high_threshold = float(args["high_threshold"]) if args["high_threshold"] else 0.55
+verbose = True if args["verbose"] else False
+
+if verbose:
+    print "low_t = %d, high_t = %d, pool_path = %s" % (low_threshold, high_threshold, pool_path)
 
 # Load the classifier, class names, scaler, number of clusters and vocabulary 
 im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
@@ -40,40 +51,27 @@ im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
 fea_det = cv2.FeatureDetector_create("SIFT")
 des_ext = cv2.DescriptorExtractor_create("SIFT")
 
-# List where all the descriptors are stored
-des_list = []
 
-imlet_names = os.listdir(pool_path)
-imlet_paths = []
-for imlet_name in imlet_names:
-    imlet_path = os.path.join(pool_path + imlet_name)
-    imlet_paths += [imlet_path]
-
-highClusters = [] 
-lowClusters = []
-for imlet_path in imlet_paths:
-    clusters = searchSingle(imlet_path, image_paths, floor, ceiling)
-    highClusters.append(clusters[0])
-    lowClusters.append(clusters[1])
-
-select(highClusters, lowClusters)
-
-def searchSingle(img, image_paths, floor, ceiling):
+def search_single(img):
     '''
     returns:
         highScoreCluster, list of paths of pics with high score, such as
         >= 0.5; 
         lowScoreCluster, ibid.;
     '''
-    im = cv2.imread(pool_path)
+    print "Searching similar pics for pool image %s...\n" % img
+    im = cv2.imread(img)
     kpts = fea_det.detect(im)
     kpts, des = des_ext.compute(im, kpts)
+
+    # List where all the descriptors are stored
+    des_list = []
 
     # rootsift - not boosting performance
     #rs = RootSIFT()
     #des = rs.compute(kpts, des)
 
-    des_list.append((pool_path, des))   
+    des_list.append((img, des))   
         
     # Stack all the descriptors vertically in a numpy array
     descriptors = des_list[0][1]
@@ -89,144 +87,124 @@ def searchSingle(img, image_paths, floor, ceiling):
     test_features = preprocessing.normalize(test_features, norm='l2')
 
     score = np.dot(test_features, im_features.T)
-    print "score: ", score
     rank_ID = np.argsort(-score)
-    print "rank matrix: ", rank_ID[0]
+    if verbose:
+        print "==================search_single()==================\n"
+        print "score: ", score
+        print "rank matrix: ", rank_ID[0]
 
-    clusters = []
+    clusters = [[],[],[]]
 
     for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
-        print "ID = ", ID, " Score = ", score[0][ID], "\r"
+        if verbose:
+            print "ID = ", ID, " Score = ", score[0][ID], "\r"
+
+        if args["percentage"]:
+            for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
+                if i <= len(image_paths) * 0.05:
+                    clusters[0].append(ID)
+                elif len(image_paths) * 0.95 > i > len(image_paths) * 0.05:
+                    clusters[2].append(ID)
+                else:
+                    clusters[1].append(ID)
+            break;
 
         # manually cluster by score
         # Returns list of lists where each sublist is a cluster of IDs, and length of the master list is numClusters.
-        if score[0][ID] >= ceiling:
-            print "Putting picture %d into HIGH" % ID
+        if score[0][ID] >= high_threshold:
+            if verbose:
+                print "Putting picture %s into HIGH" % image_paths[ID]
             clusters[0].append(ID)
-        elif score[0][ID] <= floor:
-            print "Putting picture %d into LOW" % ID
+        elif score[0][ID] <= low_threshold:
+            if verbose:
+                print "Putting picture %s into LOW" % image_paths[ID]
             clusters[1].append(ID)
+        elif high_threshold > score[0][ID] > low_threshold: 
+            if verbose:
+                print "Putting picture %s into MID" % image_paths[ID]
+            clusters[2].append(ID)
 
     return clusters
 
-def select(highScoreClusters, lowScoreClusters):
+def intersection(nested_list):
+    while len(nested_list) > 1:
+        l_0 = nested_list[0]
+        l_1 = nested_list[1]
+        nested_list[1] = [id for id in l_0 if id in l_1]
+        del nested_list[0]
+    res = nested_list[0]
+    return res
+
+def union(nested_list):
+    res = []
+    for cluster in nested_list:
+        res += [id for id in cluster if id not in res]
+    return res
+
+
+def select(highScoreClusters, lowScoreClusters, mid_clusters):
     '''
     returns list of IDs of pics unioned as high-score clusters without intersection of the low-score clusters
     ''' 
-    unionHigh = []
-    unionLow = []
-    for cluster in highScoreClusters:
-        unionHigh += cluster
-    for cluster in lowScoreClusters:
-        unionLow += cluster
-    return [i for i in unionHigh and i not in unionLow]
+    res_high = union(highScoreClusters)
+    res_low = union(lowScoreClusters)
+    res_mid = intersection(mid_clusters)
+    # res_high - res_low
+    res = [i for i in res_high if i not in res_low if i not in res_mid]
 
-def archive(selected):
+    if verbose:
+        print "\n ==================select()=================="
+        print "high & low score clusters: \n", highScoreClusters, "\n", lowScoreClusters
+        print "length of res_high and res_low: \n", len(res_high), len(res_low)
+
+    return res, res_low
+
+
+def archive(selected_pics, low_pics, dir_path):
+    if verbose:
+        print "\n ==================archive()=================="
+        print "Generating %d lowpics and %d highpics..." % (len(low_pics), len(selected_pics))
+    res_folder_name = "N=" + str(len(selected_pics)) + ",f=" + str(low_threshold) + ",c=" + str(high_threshold)
+    new_path = os.path.split(dir_path)[0] + "\\" + res_folder_name
+    if os.path.exists(new_path):
+        if verbose:
+            print new_path, " file exists; replacing..."
+        shutil.rmtree(new_path)
+    low_pics_path = new_path + "\\" + "below " + str(low_threshold)
+    os.mkdir(new_path)
+    os.mkdir(low_pics_path)
+    for ID in selected_pics:
+        shutil.copy(image_paths[ID], new_path)
+    for ID in low_pics:
+        shutil.copy(image_paths[ID], low_pics_path)
     return
 
 
+highClusters = [] 
+lowClusters = []
+mid_clusters = []
+for imlet_name in os.listdir(pool_path):
+    imlet_path = os.path.split(pool_path)[0] + "\\" + imlet_name
+    if verbose:
+        print imlet_path
+    clusters = search_single(imlet_path)
+    highClusters.append(clusters[0])
+    lowClusters.append(clusters[1])
+    mid_clusters.append(clusters[2])
 
-# initiate clusters for picture ID
-clusters = [[] for i in range(5)]
+res_pics, res_low = select(highClusters, lowClusters, mid_clusters)
+archive(res_pics, res_low, pool_path)
 
-for i, ID in enumerate(rank_ID[0][0:409]):
-    print "ID = ", ID, " Score = ", score[0][ID], "\r"
-
-    # manually cluster by score
-    # Returns list of lists where each sublist is a cluster of IDs, and length of the master list is numClusters.
-    if score[0][ID] > 0.5:
-        print "Putting picture %d into ScoreRange 0" % ID
-        clusters[0].append(ID)
-    elif score[0][ID] > 0.33:
-        print "Putting picture %d into ScoreRange 1" % ID
-        clusters[1].append(ID)
-    elif score[0][ID] > 0.25:
-        print "Putting picture %d into ScoreRange 2" % ID
-        clusters[2].append(ID)
-    elif score[0][ID] > 0.20:
-        print "Putting picture %d into ScoreRange 3" % ID
-        clusters[3].append(ID)
-    elif score[0][ID] <= 0.20 and score[0][ID] >= 0:
-        print "Putting picture %d into ScoreRange 4" % ID
-        clusters[4].append(ID)
-    else: 
-        print "INVALID SCORE"
-
-    # if score[0][ID] <= 0.3:
-    #     print "Score <= 30%, terminating..."
-    #     break
-    # clusters of picture IDs marked to be similar to the query pic
-    # list1.append(ID)
+# write stats to report file in the root folder
+# f = open(pool_path + "report.txt", "w+")
+# for ID in similar_pics:
+#     f.write("The score of Picture ")
+#     f.write(image_paths[ID])
+#     f.write(" = ")
+#     f.write(str(score[0][ID]))
+#     f.write("\n")
+# f.close()
 
 # before showing the results, print the time elapsed for the program
 elapsed_time = time.time() - start_time
 print "Time elapsed = ", elapsed_time
-
-# write stats to report file in the root folder
-f = open("report.txt", "w+")
-for ID in list1:
-    f.write("The score of Picture ")
-    f.write(image_paths[ID])
-    f.write(" = ")
-    f.write(str(score[0][ID]))
-    f.write("\n")
-f.write("Time elapsed = ")
-f.write(str(elapsed_time))
-f.write("s\n")
-f.close()
-
-def clusterFiles(clusters, folderName):
-    '''
-    Put pictures of each cluster to respective cluster files.
-    '''
-    print "Putting these into files: ", clusters
-    path, file = os.path.split(pool_path)
-    if type(clusters) == 'numpy.ndarray':
-        r = range(len(clusters.tolist()))
-    else:
-        r = range(len(clusters))
-
-    for idx in r:
-        newPath = path + folderName + str(idx)
-        if os.path.exists(newPath):
-            print folderName, " file exists; deleting them anyways"
-            shutil.rmtree(newPath)
-        print folderName, " path = " + newPath
-        os.makedirs(newPath)
-        if type(clusters[idx]) == 'numpy.ndarray':
-            l = clusters[idx].tolist()
-        else:
-            l = clusters[idx]
-        for picID in l:
-            # shutil.move(image_paths[picID], newPath)
-            shutil.copy(image_paths[picID], newPath)
-    return
-
-def clusterFilesK(ndarr, folderName, bestK):
-    path, file = os.path.split(pool_path)
-    l = ndarr.tolist()
-    paths = []
-    for idx in range(bestK):
-        newPath = path + folderName + str(idx)
-        if os.path.exists(newPath):
-            print folderName, " file exists; deleting them anyways"
-            shutil.rmtree(newPath)
-        os.makedirs(newPath)
-        paths.append(newPath)
-    for picID in range(len(l)):
-        clusterID = l[picID]
-        print "X-Means: moving picture %d into cluster %d" % (picID, clusterID)
-        shutil.copy(image_paths[picID], paths[clusterID])
-
-# Cluster pictures only after everything else is done.
-clusterFiles(clusters, '\ScoreRange')
-clusterFilesK(KMeans[bestK - 1].labels_, '\Cluster', bestK)
-
-# create true folder
-# newpath = r'C:\Users\bowen.liu\Desktop\image-retrieval\bag-of-words-python-dev-version\dataset\cluster294\true'
-# if not os.path.exists(newpath):
-#     os.makedirs(newpath)
-
-# move similar pics to the true folder
-# for ID in list1:
-#     shutil.move(image_paths[ID], newpath)
