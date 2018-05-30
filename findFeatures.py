@@ -44,8 +44,8 @@ for training_name in training_names:
     image_paths += [image_path]
 
 # Create feature extraction and keypoint detector objects
-fea_det = cv2.FeatureDetector_create("SIFT")
-des_ext = cv2.DescriptorExtractor_create("SIFT")
+fea_det = cv2.FeatureDetector_create("SURF")
+des_ext = cv2.DescriptorExtractor_create("SURF")
 
 # List where all the descriptors are stored
 des_list = []
@@ -68,16 +68,15 @@ for i, image_path in enumerate(image_paths):
 
 # Stack all the descriptors vertically in a numpy array
 descriptors = des_list[0][1]
-print descriptors.shape
 for image_path, descriptor in des_list[1:]:
-    print image_path
     descriptors = np.vstack((descriptors, descriptor))  
 
 
 # findFeatures.py ORIGINAL CODE
 # Perform k-means clustering
 print "Start k-means: %d words, %d key points" %(numWords, descriptors.shape[0])
-voc, variance = kmeans(descriptors, numWords, 1) 
+voc, variance = kmeans(descriptors, numWords, 1)
+print "\nDone k-means with voc = ", voc, " variance = ", variance 
 
 # Calculate the histogram of features
 im_features = np.zeros((len(image_paths), numWords), "float32")
@@ -87,13 +86,16 @@ for i in xrange(len(image_paths)):
         im_features[i][w] += 1
 
 # Perform Tf-Idf vectorization
+print "\nStart TF-ID vectorization..."
 nbr_occurences = np.sum( (im_features > 0) * 1, axis = 0)
 idf = np.array(np.log((1.0*len(image_paths)+1) / (1.0*nbr_occurences + 1)), 'float32')
 
 # Perform L2 normalization
+print "\nPerform L2 normalization"
 im_features = im_features*idf
 im_features = preprocessing.normalize(im_features, norm='l2')
 
+print "\ndump features..."
 joblib.dump((im_features, image_paths, idf, numWords, voc), "bof.pkl", compress=3)       
 
 

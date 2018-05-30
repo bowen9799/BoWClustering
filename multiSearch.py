@@ -21,6 +21,7 @@ from scipy.spatial import distance
 import sklearn.datasets
 from sklearn.preprocessing import StandardScaler
 from bic import compute_bic 
+import sys
 
 # calculate time elapsed
 start_time = time.time()
@@ -48,8 +49,8 @@ if verbose:
 im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
     
 # Create feature extraction and keypoint detector objects
-fea_det = cv2.FeatureDetector_create("SIFT")
-des_ext = cv2.DescriptorExtractor_create("SIFT")
+fea_det = cv2.FeatureDetector_create("SURF")
+des_ext = cv2.DescriptorExtractor_create("SURF")
 
 
 def search_single(img):
@@ -90,24 +91,35 @@ def search_single(img):
     rank_ID = np.argsort(-score)
     if verbose:
         print "==================search_single()==================\n"
-        print "score: ", score
-        print "rank matrix: ", rank_ID[0]
+        # print "score: ", score
+        # print "rank matrix: ", rank_ID[0]
 
     clusters = [[],[],[]]
 
     for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
         if verbose:
-            print "ID = ", ID, " Score = ", score[0][ID], "\r"
+            print "ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
 
         if args["percentage"]:
+            count_mid = 0
             for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
                 if i <= len(image_paths) * 0.05:
+                    # if score[0][ID] <= 0.42:
+                    #         print "IMAGE " + img + " MAY NOT BE A GOOD CANDIDATE.\n"
+                    #         sys.exit()
+                    if verbose:
+                        print "**HIGH** ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
                     clusters[0].append(ID)
-                elif len(image_paths) * 0.95 > i > len(image_paths) * 0.05:
-                    clusters[2].append(ID)
-                else:
+                elif score[0][ID] <= 0.15:
+                    if verbose:
+                        print "**LOW** ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
                     clusters[1].append(ID)
-            break;
+                else:
+                    count_mid += 1
+                    clusters[2].append(ID)
+            if verbose:
+                print "MID CLUSTER SIZE = ", count_mid
+            break
 
         # manually cluster by score
         # Returns list of lists where each sublist is a cluster of IDs, and length of the master list is numClusters.
@@ -123,6 +135,9 @@ def search_single(img):
             if verbose:
                 print "Putting picture %s into MID" % image_paths[ID]
             clusters[2].append(ID)
+    
+    if verbose:
+        print "search_single() for image" + img + "generates %d lowpics, %d midpics and %d highpics\n" % (len(clusters[1]), len(clusters[2]), len(clusters[0]))
 
     return clusters
 
@@ -149,12 +164,19 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters):
     res_high = union(highScoreClusters)
     res_low = union(lowScoreClusters)
     res_mid = intersection(mid_clusters)
-    # res_high - res_low
-    res = [i for i in res_high if i not in res_low if i not in res_mid]
+
+    # res_high - res_low - res_mid
+    # res = [i for i in res_high if i not in res_low if i not in res_mid]
+    # res += res_mid
+    res = [i for i in res_high if i not in res_low]
+
+    # alt method: iterative filtering
+    # res = res_high.append(res_mid)
+
 
     if verbose:
         print "\n ==================select()=================="
-        print "high & low score clusters: \n", highScoreClusters, "\n", lowScoreClusters
+        # print "high & low score clusters: \n", highScoreClusters, "\n", lowScoreClusters
         print "length of res_high and res_low: \n", len(res_high), len(res_low)
 
     return res, res_low
@@ -169,7 +191,7 @@ def archive(selected_pics, low_pics, dir_path):
     if os.path.exists(new_path):
         if verbose:
             print new_path, " file exists; replacing..."
-        shutil.rmtree(new_path)
+            shutil.rmtree(new_path)
     low_pics_path = new_path + "\\" + "below " + str(low_threshold)
     os.mkdir(new_path)
     os.mkdir(low_pics_path)
