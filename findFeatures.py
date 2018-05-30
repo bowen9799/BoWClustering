@@ -56,14 +56,14 @@ for i, image_path in enumerate(image_paths):
     kpts = fea_det.detect(im)
     kpts, des = des_ext.compute(im, kpts)
     # rootsift
-    #rs = RootSIFT()
-    #des = rs.compute(kpts, des)
+    # rs = RootSIFT()
+    # des = rs.compute(kpts, des)
     des_list.append((image_path, des))   
     
 # Stack all the descriptors vertically in a numpy array
-#downsampling = 1
-#descriptors = des_list[0][1][::downsampling,:]
-#for image_path, descriptor in des_list[1:]:
+# downsampling = 1
+# descriptors = des_list[0][1][::downsampling,:]
+# for image_path, descriptor in des_list[1:]:
 #    descriptors = np.vstack((descriptors, descriptor[::downsampling,:]))
 
 # Stack all the descriptors vertically in a numpy array

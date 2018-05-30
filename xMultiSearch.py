@@ -27,7 +27,7 @@ start_time = time.time()
 
 # Get the path of the training set
 parser = ap.ArgumentParser()
-parser.add_argument("-i", "--image", help="Path to query image", required="True")
+parser.add_argument("-i", "--image", help="Path to query image", required=True)
 args = vars(parser.parse_args())
 
 # Get query image path
