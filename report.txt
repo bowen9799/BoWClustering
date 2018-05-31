@@ -1,1 +1,1 @@
-Time elapsed = 21.6579999924s
+Time elapsed = 4.5680000782s

@@ -141,6 +141,7 @@ def search_single(img):
 
     return clusters
 
+
 def intersection(nested_list):
     while len(nested_list) > 1:
         l_0 = nested_list[0]
@@ -149,6 +150,7 @@ def intersection(nested_list):
         del nested_list[0]
     res = nested_list[0]
     return res
+
 
 def union(nested_list):
     res = []
