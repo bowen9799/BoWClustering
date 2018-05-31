@@ -28,10 +28,12 @@ start_time = time.time()
 # Get the path of the training set
 parser = ap.ArgumentParser()
 parser.add_argument("-p", "--pool", help="Path for pool to query image", required=True)
+parser.add_argument("-l", "--lowcut", help="Low bound to cut off false data", required=False)
 args = vars(parser.parse_args())
 
 # Get query image path
 pool_path = args["pool"]
+lowcut = args["lowcut"] if args["lowcut"] else 0.2
 
 # Load the classifier, class names, scaler, number of clusters and vocabulary 
 im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
@@ -82,7 +84,7 @@ def x_means(image_path):
     # print "rank matrix: ", rank_ID[0]
 
     for ID in rank_ID[0]:
-        if score[0][ID] <= 0.25:
+        if score[0][ID] <= lowcut:
             if ID not in low_union:
                 low_union.append(ID)
 
@@ -167,6 +169,8 @@ if os.path.exists(new_path):
 os.mkdir(new_path)
 for ID in result:
     shutil.copy(image_paths[ID], new_path)
+
+print "Getting result with size ", len(result), " using lowcut ", lowcut
 
 elapsed_time = time.time() - start_time
 print "Time elapsed = ", elapsed_time
