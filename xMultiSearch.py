@@ -66,7 +66,6 @@ def x_means(image_path):
 
     # Stack all the descriptors vertically in a numpy array
     descriptors = des_list[0][1]
-    print descriptors
 
     # gather features
     test_features = np.zeros((1, numWords), "float32")
@@ -84,7 +83,7 @@ def x_means(image_path):
     # print "rank matrix: ", rank_ID[0]
 
     for ID in rank_ID[0]:
-        if score[0][ID] <= lowcut:
+        if score[0][ID] <= float(lowcut):
             if ID not in low_union:
                 low_union.append(ID)
 
@@ -94,9 +93,7 @@ def x_means(image_path):
     X = np.array(x_list)
     for n in X:
         n[0] *= 1000000  # increase difference
-    print "Scores for X-Means: ", X
-    # Xs = StandardScaler().fit_transform(X)
-    # Y = iris.target
+    # print "Scores for X-Means: ", X
 
     # compute k range
     # ks = range(1, 21)
@@ -112,7 +109,7 @@ def x_means(image_path):
     # BIC = [compute_bic(kmeansi,X) for kmeansi in KMeans]
     for i in range(len(KMeans)):
         curr = compute_bic(KMeans[i], X)
-        print "BIC = ", curr, " when using %d clusters\r" % (i + bot_k)
+        # print "BIC = ", curr, " when using %d clusters\r" % (i + bot_k)
         if curr > bic_max:
             bic_max = curr
             max_idx = i
@@ -141,16 +138,18 @@ def x_means(image_path):
     assert max_size == len(res)
     print "\nSize of the largest cluster = ", max_size
 
-    path = os.path.split(pool_path)[0] + "\\" + "cluster_" + os.path.split(image_path)[1]
-    if os.path.exists(path):
-        shutil.rmtree(path)
-    os.mkdir(path)
-    print "Adding cluster images for pool image ", image_path, " to path ", path
-    for ID in res:
-        print "Adding ", image_paths[ID]
-        shutil.copy(image_paths[ID], path)
+    # # Archive big clusters for inspection
+    # path = os.path.split(pool_path)[0] + "\\" + "cluster_" + os.path.split(image_path)[1]
+    # if os.path.exists(path):
+    #     shutil.rmtree(path)
+    # os.mkdir(path)
+    # print "Adding cluster images for pool image ", image_path, " to path ", path
+    # for ID in res:
+    #     # print "Adding ", image_paths[ID]
+    #     shutil.copy(image_paths[ID], path)
 
     return res  # biggest_cluster list
+
 
 # generate ~(n/(a=4)) candidates
 biggest_cluster_union = []
@@ -163,14 +162,21 @@ for img in os.listdir(pool_path):
 print "\nLow Union: ", [image_paths[ID] for ID in low_union]
 result = [cand for cand in biggest_cluster_union if cand not in low_union]
 
-new_path = os.path.split(pool_path)[0] + "\\" + "n=" + str(len(result))
+new_path = os.path.split(pool_path)[0] + "\\" + "n=" + str(len(result)) + "_lowcut=" + lowcut
 if os.path.exists(new_path):
     shutil.rmtree(new_path)
 os.mkdir(new_path)
 for ID in result:
     shutil.copy(image_paths[ID], new_path)
 
-print "Getting result with size ", len(result), " using lowcut ", lowcut
+neg_path = new_path + "\\" + "lowcut=" + lowcut
+if os.path.exists(neg_path):
+    shutil.rmtree(neg_path)
+os.mkdir(neg_path)
+for neg_id in low_union:
+    shutil.copy(image_paths[neg_id], neg_path)
+
+print "Getting result with size ", len(result), " using lowcut ", lowcut, " with low_union of size ", len(low_union)
 
 elapsed_time = time.time() - start_time
 print "Time elapsed = ", elapsed_time
