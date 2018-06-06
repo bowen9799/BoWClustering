@@ -22,6 +22,8 @@ import sklearn.datasets
 from sklearn.preprocessing import StandardScaler
 from bic import compute_bic 
 import sys
+from random import randint
+import csv
 
 # calculate time elapsed
 start_time = time.time()
@@ -52,6 +54,8 @@ im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
 fea_det = cv2.FeatureDetector_create("SURF")
 des_ext = cv2.DescriptorExtractor_create("SURF")
 
+# score map to put into csv in the future
+score_map = {}
 
 def search_single(img):
     '''
@@ -100,6 +104,13 @@ def search_single(img):
         if verbose:
             print "ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
 
+        # put score into score map
+        if score_map.has_key(ID):
+            score_map[ID].append(score[0][ID])
+        else:
+            # print "adding %d into scoremap for the first time" % ID
+            score_map[ID] = [score[0][ID]]
+
         if args["percentage"]:
             count_mid = 0
             for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
@@ -138,7 +149,7 @@ def search_single(img):
     
     if verbose:
         print "search_single() for image" + img + "generates %d lowpics, %d midpics and %d highpics\n" % (len(clusters[1]), len(clusters[2]), len(clusters[0]))
-
+        print "search_single() for image" + img + "gives current score matrix" + score_map
     return clusters
 
 
@@ -217,6 +228,33 @@ for imlet_name in os.listdir(pool_path):
     mid_clusters.append(clusters[2])
 
 res_pics, res_low = select(highClusters, lowClusters, mid_clusters)
+
+# while (len(res_pics) < 50):
+#     print "true pics < 50:", len(res_pics)
+#     idx = 0
+#     for n in range(100 - len(res_pics)):
+#         clusteridx = idx % len(mid_clusters)
+#         cand = mid_clusters[clusteridx][randint(0, len(mid_clusters[clusteridx]) - 1)]
+#         for cluster in lowClusters:
+#             if cand in cluster:
+#                 break
+#             else:
+#                 res_pics.append(cand)
+#         idx += 1
+#
+# while (len(res_low) < 50):
+#     print "false pics < 50:", len(res_low)
+#     idx = 0
+#     for n in range(100 - len(res_low)):
+#         clusteridx = idx % len(mid_clusters)
+#         cand = mid_clusters[clusteridx][randint(0, len(mid_clusters[clusteridx]) - 1)]
+#         for cluster in highClusters:
+#             if cand in cluster:
+#                 break
+#             else:
+#                 res_low.append(cand)
+#         idx += 1
+
 archive(res_pics, res_low, pool_path)
 
 # write stats to report file in the root folder
@@ -228,6 +266,19 @@ archive(res_pics, res_low, pool_path)
 #     f.write(str(score[0][ID]))
 #     f.write("\n")
 # f.close()
+
+# put scores into csv report file
+print "Generate CSV report with score map", score_map
+if os.path.exists('report.csv'):
+    shutil.rmtree('\\report.csv')
+with open('report.csv', 'wb') as f:
+    a = csv.writer(f, delimiter=',')
+    for key, val in score_map.items():
+        content = [image_paths[key]]; # print "key = ", key
+        content.extend(val); # print "\rval = ", val
+        content.append(str(key in res_pics)); # print "\rID = ", key, " ", str(key in res_pics)
+        a.writerow(content)
+
 
 # before showing the results, print the time elapsed for the program
 elapsed_time = time.time() - start_time
