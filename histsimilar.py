@@ -39,7 +39,7 @@ def calc_similar(li, ri):
 			
 
 def calc_similar_by_path(lf, rf):
-	# print lf, rf 
+	# print lf, rf
 	li, ri = make_regalur_image(Image.open(lf)), make_regalur_image(Image.open(rf))
 	return calc_similar(li, ri)
 
@@ -67,6 +67,8 @@ def compare_all(image_path):
 	image_list = os.listdir(drive)
 	scores = []
 	for obj in image_list:
+		if not str(obj).startswith("000"):
+			continue
 		score = calc_similar_by_path(drive + '/' + sbj, drive + '/' + obj)
 		scores.append((obj, score))
 	# for t in scores:	

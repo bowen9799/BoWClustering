@@ -204,9 +204,8 @@ def archive(selected_pics, low_pics, color_low, dir_path):
     res_folder_name = "N=" + str(len(selected_pics)) + ",f=" + str(low_threshold) + ",c=" + str(high_threshold)
     new_path = os.path.split(dir_path)[0] + "\\" + res_folder_name
     if os.path.exists(new_path):
-        if verbose:
-            print new_path, " file exists; replacing..."
-            shutil.rmtree(new_path)
+        print new_path, " file exists; replacing..."
+        shutil.rmtree(new_path)
     low_pics_path = new_path + "\\" + "below " + str(low_threshold)
     color_low_path = new_path + "\\" + "color score under " + str(color_lowcut)
     os.mkdir(new_path)
@@ -216,8 +215,8 @@ def archive(selected_pics, low_pics, color_low, dir_path):
         shutil.copy(image_paths[ID], new_path)
     for ID in low_pics:
         shutil.copy(image_paths[ID], low_pics_path)
-    for ID in color_low:
-        shutil.copy(image_paths[ID], color_low)
+    for img_name in color_low:
+        shutil.copy(os.path.split(dir_path)[0] + "\\" + img_name, color_low_path)
     return
 
 
@@ -233,6 +232,7 @@ for imlet_name in os.listdir(pool_path):
     highClusters.append(clusters[0])
     lowClusters.append(clusters[1])
     mid_clusters.append(clusters[2])
+    print imlet_path
     neg_colorwise.append([t[0] for t in compare_all(imlet_path) \
     if t[1] < color_lowcut])
 
@@ -278,8 +278,9 @@ archive(res_pics, res_low, color_low, pool_path)
 
 # put scores into csv report file
 print "Generate CSV report with score map", score_map
-if os.path.exists('report.csv'):
-    shutil.rmtree('\\report.csv')
+if os.path.exists('\report.csv'):
+    print "\rReplacing existing report.csv file"
+    shutil.rmtree('\report.csv')
 with open('report.csv', 'wb') as f:
     a = csv.writer(f, delimiter=',')
     for key, val in score_map.items():
