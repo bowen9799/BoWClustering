@@ -179,6 +179,7 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
     res_low = union(lowScoreClusters)
     # res_mid = intersection(mid_clusters)
     color_low = union(neg_colorwise)
+    print "\nColorwise negative images: ", color_low
 
     # res_high - res_low - res_mid
     # res = [i for i in res_high if i not in res_low if i not in res_mid]
@@ -187,7 +188,6 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
 
     # alt method: iterative filtering
     # res = res_high.append(res_mid)
-
 
     if verbose:
         print "\n ==================select()=================="
@@ -204,7 +204,7 @@ def archive(selected_pics, low_pics, color_low, dir_path):
     res_folder_name = "N=" + str(len(selected_pics)) + ",f=" + str(low_threshold) + ",c=" + str(high_threshold)
     new_path = os.path.split(dir_path)[0] + "\\" + res_folder_name
     if os.path.exists(new_path):
-        print new_path, " file exists; replacing..."
+        print new_path, "\nfile exists; replacing..."
         shutil.rmtree(new_path)
     low_pics_path = new_path + "\\" + "below " + str(low_threshold)
     color_low_path = new_path + "\\" + "color score under " + str(color_lowcut)
@@ -232,7 +232,6 @@ for imlet_name in os.listdir(pool_path):
     highClusters.append(clusters[0])
     lowClusters.append(clusters[1])
     mid_clusters.append(clusters[2])
-    print imlet_path
     neg_colorwise.append([t[0] for t in compare_all(imlet_path) \
     if t[1] < color_lowcut])
 

@@ -67,7 +67,9 @@ def compare_all(image_path):
 	image_list = os.listdir(drive)
 	scores = []
 	for obj in image_list:
-		if not str(obj).startswith("000"):
+		# print obj
+		if os.path.isdir(drive + '/' + obj):
+			print obj + " is a directory; skipping."
 			continue
 		score = calc_similar_by_path(drive + '/' + sbj, drive + '/' + obj)
 		scores.append((obj, score))
