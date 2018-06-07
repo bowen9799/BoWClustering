@@ -105,16 +105,17 @@ def search_single(img):
         if verbose:
             print "ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
 
-        # put score into score map
-        if score_map.has_key(ID):
-            score_map[ID].append(score[0][ID])
-        else:
-            # print "adding %d into scoremap for the first time" % ID
-            score_map[ID] = [score[0][ID]]
-
         if args["percentage"]:
             count_mid = 0
             for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
+
+                # put score into score map
+                if score_map.has_key(ID):
+                    score_map[ID].append(score[0][ID])
+                else:
+                    # print "adding %d into scoremap for the first time" % ID
+                    score_map[ID] = [score[0][ID]]
+
                 if i <= len(image_paths) * 0.05:
                     # if score[0][ID] <= 0.42:
                     #         print "IMAGE " + img + " MAY NOT BE A GOOD CANDIDATE.\n"
@@ -184,7 +185,8 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
     # res_high - res_low - res_mid
     # res = [i for i in res_high if i not in res_low if i not in res_mid]
     # res += res_mid
-    res = [i for i in res_high if i not in res_low if i not in color_low]
+    res = [i for i in res_high if i not in res_low 
+    if os.path.split(image_paths[i])[1] not in color_low]
 
     # alt method: iterative filtering
     # res = res_high.append(res_mid)
@@ -201,7 +203,10 @@ def archive(selected_pics, low_pics, color_low, dir_path):
     if verbose:
         print "\n ==================archive()=================="
         print "Generating %d lowpics and %d highpics..." % (len(low_pics), len(selected_pics))
-    res_folder_name = "N=" + str(len(selected_pics)) + ",f=" + str(low_threshold) + ",c=" + str(high_threshold)
+    if (args["percentage"]):
+        res_folder_name = "N=" + str(len(selected_pics)) + ", percentage=True, low_color_num=" + str(len(color_low))
+    else:
+        res_folder_name = "N=" + str(len(selected_pics)) + ",f=" + str(low_threshold) + ",c=" + str(high_threshold) + "low_color_num =" + str(len(color_low))
     new_path = os.path.split(dir_path)[0] + "\\" + res_folder_name
     if os.path.exists(new_path):
         print new_path, "\nfile exists; replacing..."
