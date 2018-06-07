@@ -285,7 +285,8 @@ print "Generate CSV report with score map", score_map
 if os.path.exists('\report.csv'):
     print "\rReplacing existing report.csv file"
     shutil.rmtree('\report.csv')
-with open('report.csv', 'wb') as f:
+csv_path = pool_path + '/' + 'report.csv'
+with open(csv_path, 'wb') as f:
     a = csv.writer(f, delimiter=',')
     for key, val in score_map.items():
         content = [image_paths[key]]; # print "key = ", key
