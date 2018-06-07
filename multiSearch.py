@@ -12,7 +12,6 @@ from math import sqrt, ceil
 from sklearn import preprocessing
 import shutil
 
-from pylab import *
 from PIL import Image
 from rootsift import RootSIFT
 import matplotlib.pyplot as plt
@@ -21,9 +20,9 @@ from scipy.spatial import distance
 import sklearn.datasets
 from sklearn.preprocessing import StandardScaler
 from bic import compute_bic 
-import sys
+import sys, csv, time
 from random import randint
-import csv
+from histsimilar import compare_all
 
 # calculate time elapsed
 start_time = time.time()
@@ -34,12 +33,14 @@ parser.add_argument("-i", "--pool", help="Path to query image pool", required=Tr
 parser.add_argument("-b", "--low_threshold", help="Floor value", required=False)
 parser.add_argument("-t", "--high_threshold", help="Ceiling value", required=False)
 parser.add_argument("-p", "--percentage", help="limit numbers", required=False)
+parser.add_argument("-c", "--color_lowcut", help="colorwise lowcut", required=False)
 parser.add_argument("-v", "--verbose")
 
 args = vars(parser.parse_args())
 
 # Get query image path
 pool_path = args["pool"]
+color_lowcut = float(args["color_lowcut"]) if args["color_lowcut"] else 0.2
 low_threshold = float(args["low_threshold"]) if args["low_threshold"] else 0.15
 high_threshold = float(args["high_threshold"]) if args["high_threshold"] else 0.55
 verbose = True if args["verbose"] else False
@@ -170,18 +171,19 @@ def union(nested_list):
     return res
 
 
-def select(highScoreClusters, lowScoreClusters, mid_clusters):
+def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
     '''
     returns list of IDs of pics unioned as high-score clusters without intersection of the low-score clusters
     ''' 
     res_high = union(highScoreClusters)
     res_low = union(lowScoreClusters)
-    res_mid = intersection(mid_clusters)
+    # res_mid = intersection(mid_clusters)
+    color_low = union(neg_colorwise)
 
     # res_high - res_low - res_mid
     # res = [i for i in res_high if i not in res_low if i not in res_mid]
     # res += res_mid
-    res = [i for i in res_high if i not in res_low]
+    res = [i for i in res_high if i not in res_low if i not in color_low]
 
     # alt method: iterative filtering
     # res = res_high.append(res_mid)
@@ -192,10 +194,10 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters):
         # print "high & low score clusters: \n", highScoreClusters, "\n", lowScoreClusters
         print "length of res_high and res_low: \n", len(res_high), len(res_low)
 
-    return res, res_low
+    return res, res_low, color_low
 
 
-def archive(selected_pics, low_pics, dir_path):
+def archive(selected_pics, low_pics, color_low, dir_path):
     if verbose:
         print "\n ==================archive()=================="
         print "Generating %d lowpics and %d highpics..." % (len(low_pics), len(selected_pics))
@@ -206,18 +208,23 @@ def archive(selected_pics, low_pics, dir_path):
             print new_path, " file exists; replacing..."
             shutil.rmtree(new_path)
     low_pics_path = new_path + "\\" + "below " + str(low_threshold)
+    color_low_path = new_path + "\\" + "color score under " + str(color_lowcut)
     os.mkdir(new_path)
     os.mkdir(low_pics_path)
+    os.mkdir(color_low_path)
     for ID in selected_pics:
         shutil.copy(image_paths[ID], new_path)
     for ID in low_pics:
         shutil.copy(image_paths[ID], low_pics_path)
+    for ID in color_low:
+        shutil.copy(image_paths[ID], color_low)
     return
 
 
 highClusters = [] 
 lowClusters = []
 mid_clusters = []
+neg_colorwise = []
 for imlet_name in os.listdir(pool_path):
     imlet_path = os.path.split(pool_path)[0] + "\\" + imlet_name
     if verbose:
@@ -226,8 +233,10 @@ for imlet_name in os.listdir(pool_path):
     highClusters.append(clusters[0])
     lowClusters.append(clusters[1])
     mid_clusters.append(clusters[2])
+    neg_colorwise.append([t[0] for t in compare_all(imlet_path) \
+    if t[1] < color_lowcut])
 
-res_pics, res_low = select(highClusters, lowClusters, mid_clusters)
+res_pics, res_low, color_low = select(highClusters, lowClusters, mid_clusters, neg_colorwise)
 
 # while (len(res_pics) < 50):
 #     print "true pics < 50:", len(res_pics)
@@ -255,7 +264,7 @@ res_pics, res_low = select(highClusters, lowClusters, mid_clusters)
 #                 res_low.append(cand)
 #         idx += 1
 
-archive(res_pics, res_low, pool_path)
+archive(res_pics, res_low, color_low, pool_path)
 
 # write stats to report file in the root folder
 # f = open(pool_path + "report.txt", "w+")
