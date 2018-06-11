@@ -7,7 +7,6 @@ import numpy as np
 import os
 from sklearn.externals import joblib
 from scipy.cluster.vq import *
-from math import sqrt, ceil
 
 from sklearn import preprocessing
 import shutil
@@ -58,24 +57,25 @@ des_ext = cv2.DescriptorExtractor_create("SURF")
 # score map to put into csv in the future
 score_map = {}
 
+
 def search_single(img):
-    '''
+    """
     returns:
         highScoreCluster, list of paths of pics with high score, such as
         >= 0.5; 
         lowScoreCluster, ibid.;
-    '''
+    """
     print "Searching similar pics for pool image %s...\n" % img
     im = cv2.imread(img)
     kpts = fea_det.detect(im)
     kpts, des = des_ext.compute(im, kpts)
 
     # List where all the descriptors are stored
-    des_list = []
+    des_list = list()
 
     # rootsift - not boosting performance
-    #rs = RootSIFT()
-    #des = rs.compute(kpts, des)
+    # rs = RootSIFT()
+    # des = rs.compute(kpts, des)
 
     des_list.append((img, des))   
         
@@ -84,7 +84,7 @@ def search_single(img):
 
     # gather features
     test_features = np.zeros((1, numWords), "float32")
-    words, distance = vq(descriptors,voc)
+    words, distance = vq(descriptors, voc)
     for w in words:
         test_features[0][w] += 1
 
@@ -93,7 +93,7 @@ def search_single(img):
     test_features = preprocessing.normalize(test_features, norm='l2')
 
     score = np.dot(test_features, im_features.T)
-    rank_ID = np.argsort(-score)
+    rank_id = np.argsort(-score)
     if verbose:
         print "==================search_single()==================\n"
         # print "score: ", score
@@ -101,13 +101,13 @@ def search_single(img):
 
     clusters = [[],[],[]]
 
-    for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
+    for i, ID in enumerate(rank_id[0][0:len(image_paths)]):
         if verbose:
             print "ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
 
         if args["percentage"]:
             count_mid = 0
-            for i, ID in enumerate(rank_ID[0][0:len(image_paths)]):
+            for i, ID in enumerate(rank_id[0][0:len(image_paths)]):
 
                 # put score into score map
                 if score_map.has_key(ID):
@@ -173,9 +173,9 @@ def union(nested_list):
 
 
 def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
-    '''
+    """
     returns list of IDs of pics unioned as high-score clusters without intersection of the low-score clusters
-    ''' 
+    """
     res_high = union(highScoreClusters)
     res_low = union(lowScoreClusters)
     # res_mid = intersection(mid_clusters)
@@ -203,16 +203,16 @@ def archive(selected_pics, low_pics, color_low, dir_path):
     if verbose:
         print "\n ==================archive()=================="
         print "Generating %d lowpics and %d highpics..." % (len(low_pics), len(selected_pics))
-    if (args["percentage"]):
+    if args["percentage"]:
         res_folder_name = "N=" + str(len(selected_pics)) + ", percentage=True, low_color_num=" + str(len(color_low))
     else:
         res_folder_name = "N=" + str(len(selected_pics)) + ",f=" + str(low_threshold) + ",c=" + str(high_threshold) + "low_color_num =" + str(len(color_low))
-    new_path = os.path.split(dir_path)[0] + "\\" + res_folder_name
+    new_path = os.path.split(dir_path)[0] + "/" + res_folder_name
     if os.path.exists(new_path):
         print new_path, "\nfile exists; replacing..."
         shutil.rmtree(new_path)
-    low_pics_path = new_path + "\\" + "below " + str(low_threshold)
-    color_low_path = new_path + "\\" + "color score under " + str(color_lowcut)
+    low_pics_path = new_path + "/" + "below " + str(low_threshold)
+    color_low_path = new_path + "/" + "color score under " + str(color_lowcut)
     os.mkdir(new_path)
     os.mkdir(low_pics_path)
     os.mkdir(color_low_path)
@@ -221,7 +221,7 @@ def archive(selected_pics, low_pics, color_low, dir_path):
     for ID in low_pics:
         shutil.copy(image_paths[ID], low_pics_path)
     for img_name in color_low:
-        shutil.copy(os.path.split(dir_path)[0] + "\\" + img_name, color_low_path)
+        shutil.copy(os.path.split(dir_path)[0] + "/" + img_name, color_low_path)
     return
 
 
@@ -232,7 +232,7 @@ neg_colorwise = []
 csv_header = ["Image Name"]
 for imlet_name in os.listdir(pool_path):
     csv_header.append(imlet_name)
-    imlet_path = os.path.split(pool_path)[0] + "\\" + imlet_name
+    imlet_path = os.path.split(pool_path)[0] + "/" + imlet_name
     if verbose:
         print imlet_path
     clusters = search_single(imlet_path)
@@ -295,6 +295,9 @@ with open(csv_path, 'wb') as f:
         content = [os.path.split(image_paths[key])[1]]
         content.extend(val)
         content.append(str(key in res_pics))
+        if os.path.split(image_paths[key])[1] in neg_colorwise:
+            content.append("CUTOFF")
+            print "\nCutting off ", os.path.split(image_paths[key])[1]
         a.writerow(content)
 
 
