@@ -229,7 +229,9 @@ highClusters = []
 lowClusters = []
 mid_clusters = []
 neg_colorwise = []
+csv_header = ["Image Name"]
 for imlet_name in os.listdir(pool_path):
+    csv_header.append(imlet_name)
     imlet_path = os.path.split(pool_path)[0] + "\\" + imlet_name
     if verbose:
         print imlet_path
@@ -288,10 +290,11 @@ if os.path.exists('\report.csv'):
 csv_path = pool_path + '/' + 'report.csv'
 with open(csv_path, 'wb') as f:
     a = csv.writer(f, delimiter=',')
+    a.writerow(csv_header)
     for key, val in score_map.items():
-        content = [image_paths[key]]; # print "key = ", key
-        content.extend(val); # print "\rval = ", val
-        content.append(str(key in res_pics)); # print "\rID = ", key, " ", str(key in res_pics)
+        content = [os.path.split(image_paths[key])[1]]
+        content.extend(val)
+        content.append(str(key in res_pics))
         a.writerow(content)
 
 
