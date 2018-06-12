@@ -23,40 +23,6 @@ import sys, csv, time
 from random import randint
 from histsimilar import compare_all
 
-# calculate time elapsed
-start_time = time.time()
-
-# Get the path of the training set
-parser = ap.ArgumentParser()
-parser.add_argument("-i", "--pool", help="Path to query image pool", required=True)
-parser.add_argument("-b", "--low_threshold", help="Floor value", required=False)
-parser.add_argument("-t", "--high_threshold", help="Ceiling value", required=False)
-parser.add_argument("-p", "--percentage", help="limit numbers", required=False)
-parser.add_argument("-c", "--color_lowcut", help="colorwise lowcut", required=False)
-parser.add_argument("-v", "--verbose")
-
-args = vars(parser.parse_args())
-
-# Get query image path
-pool_path = args["pool"]
-color_lowcut = float(args["color_lowcut"]) if args["color_lowcut"] else 0.2
-low_threshold = float(args["low_threshold"]) if args["low_threshold"] else 0.15
-high_threshold = float(args["high_threshold"]) if args["high_threshold"] else 0.55
-verbose = True if args["verbose"] else False
-
-if verbose:
-    print "low_t = %d, high_t = %d, pool_path = %s" % (low_threshold, high_threshold, pool_path)
-
-# Load the classifier, class names, scaler, number of clusters and vocabulary 
-im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
-    
-# Create feature extraction and keypoint detector objects
-fea_det = cv2.FeatureDetector_create("SURF")
-des_ext = cv2.DescriptorExtractor_create("SURF")
-
-# score map to put into csv in the future
-score_map = {}
-
 
 def search_single(img):
     """
@@ -222,85 +188,125 @@ def archive(selected_pics, low_pics, color_low, dir_path):
         shutil.copy(image_paths[ID], low_pics_path)
     for img_name in color_low:
         shutil.copy(os.path.split(dir_path)[0] + "/" + img_name, color_low_path)
+    dump_csv(os.path.split(dir_path)[0] + "/" + "report.csv")
     return
 
 
-highClusters = [] 
-lowClusters = []
-mid_clusters = []
-neg_colorwise = []
-csv_header = ["Image Name"]
-for imlet_name in os.listdir(pool_path):
-    csv_header.append(imlet_name)
-    imlet_path = os.path.split(pool_path)[0] + "/" + imlet_name
+def dump_csv(file_path):
+    """
+    Put scores into csv report file
+    :param file_path: path to csv inclusive of name
+    :return: none
+    """
+    print "Generate CSV report with score map", score_map
+    if os.path.exists('\report.csv'):
+        print "\rReplacing existing report.csv file"
+        shutil.rmtree('\report.csv')
+    with open(file_path, 'wb') as f:
+        a = csv.writer(f, delimiter=',')
+        a.writerow(csv_header)
+        for key, val in score_map.items():
+            content = [os.path.split(image_paths[key])[1]]
+            content.extend(val)
+            content.append(str(key in res_pics))
+            if os.path.split(image_paths[key])[1] in neg_colorwise:
+                content.append("CUTOFF")
+                print "\nCutting off ", os.path.split(image_paths[key])[1]
+            a.writerow(content)
+
+
+if __name__ == '__main__':
+
+    # calculate time elapsed
+    start_time = time.time()
+
+    # Get the path of the training set
+    parser = ap.ArgumentParser()
+    parser.add_argument("-i", "--pool", help="Path to query image pool", required=True)
+    parser.add_argument("-b", "--low_threshold", help="Floor value", required=False)
+    parser.add_argument("-t", "--high_threshold", help="Ceiling value", required=False)
+    parser.add_argument("-p", "--percentage", help="limit numbers", required=False)
+    parser.add_argument("-c", "--color_lowcut", help="colorwise lowcut", required=False)
+    parser.add_argument("-v", "--verbose")
+
+    args = vars(parser.parse_args())
+
+    # Get query image path
+    pool_path = args["pool"]
+    color_lowcut = float(args["color_lowcut"]) if args["color_lowcut"] else 0.2
+    low_threshold = float(args["low_threshold"]) if args["low_threshold"] else 0.15
+    high_threshold = float(args["high_threshold"]) if args["high_threshold"] else 0.55
+    verbose = True if args["verbose"] else False
+
     if verbose:
-        print imlet_path
-    clusters = search_single(imlet_path)
-    highClusters.append(clusters[0])
-    lowClusters.append(clusters[1])
-    mid_clusters.append(clusters[2])
-    neg_colorwise.append([t[0] for t in compare_all(imlet_path) \
-    if t[1] < color_lowcut])
+        print "low_t = %d, high_t = %d, pool_path = %s" % (low_threshold, high_threshold, pool_path)
 
-res_pics, res_low, color_low = select(highClusters, lowClusters, mid_clusters, neg_colorwise)
+    # Load the classifier, class names, scaler, number of clusters and vocabulary
+    im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
 
-# while (len(res_pics) < 50):
-#     print "true pics < 50:", len(res_pics)
-#     idx = 0
-#     for n in range(100 - len(res_pics)):
-#         clusteridx = idx % len(mid_clusters)
-#         cand = mid_clusters[clusteridx][randint(0, len(mid_clusters[clusteridx]) - 1)]
-#         for cluster in lowClusters:
-#             if cand in cluster:
-#                 break
-#             else:
-#                 res_pics.append(cand)
-#         idx += 1
-#
-# while (len(res_low) < 50):
-#     print "false pics < 50:", len(res_low)
-#     idx = 0
-#     for n in range(100 - len(res_low)):
-#         clusteridx = idx % len(mid_clusters)
-#         cand = mid_clusters[clusteridx][randint(0, len(mid_clusters[clusteridx]) - 1)]
-#         for cluster in highClusters:
-#             if cand in cluster:
-#                 break
-#             else:
-#                 res_low.append(cand)
-#         idx += 1
+    # Create feature extraction and keypoint detector objects
+    fea_det = cv2.FeatureDetector_create("SURF")
+    des_ext = cv2.DescriptorExtractor_create("SURF")
 
-archive(res_pics, res_low, color_low, pool_path)
+    # score map to put into csv in the future
+    score_map = {}
 
-# write stats to report file in the root folder
-# f = open(pool_path + "report.txt", "w+")
-# for ID in similar_pics:
-#     f.write("The score of Picture ")
-#     f.write(image_paths[ID])
-#     f.write(" = ")
-#     f.write(str(score[0][ID]))
-#     f.write("\n")
-# f.close()
+    highClusters = []
+    lowClusters = []
+    mid_clusters = []
+    neg_colorwise = []
+    csv_header = ["Image Name"]
+    for imlet_name in os.listdir(pool_path):
+        csv_header.append(imlet_name)
+        imlet_path = os.path.split(pool_path)[0] + "/" + imlet_name
+        if verbose:
+            print imlet_path
+        clusters = search_single(imlet_path)
+        highClusters.append(clusters[0])
+        lowClusters.append(clusters[1])
+        mid_clusters.append(clusters[2])
+        neg_colorwise.append([t[0] for t in compare_all(imlet_path) if t[1] < color_lowcut])
 
-# put scores into csv report file
-print "Generate CSV report with score map", score_map
-if os.path.exists('\report.csv'):
-    print "\rReplacing existing report.csv file"
-    shutil.rmtree('\report.csv')
-csv_path = pool_path + '/' + 'report.csv'
-with open(csv_path, 'wb') as f:
-    a = csv.writer(f, delimiter=',')
-    a.writerow(csv_header)
-    for key, val in score_map.items():
-        content = [os.path.split(image_paths[key])[1]]
-        content.extend(val)
-        content.append(str(key in res_pics))
-        if os.path.split(image_paths[key])[1] in neg_colorwise:
-            content.append("CUTOFF")
-            print "\nCutting off ", os.path.split(image_paths[key])[1]
-        a.writerow(content)
+    res_pics, res_low, color_low = select(highClusters, lowClusters, mid_clusters, neg_colorwise)
 
+    archive(res_pics, res_low, color_low, pool_path)
 
-# before showing the results, print the time elapsed for the program
-elapsed_time = time.time() - start_time
-print "Time elapsed = ", elapsed_time
+    # Print the time elapsed for the program
+    elapsed_time = time.time() - start_time
+    print "Time elapsed = ", elapsed_time
+
+    # while (len(res_pics) < 50):
+    #     print "true pics < 50:", len(res_pics)
+    #     idx = 0
+    #     for n in range(100 - len(res_pics)):
+    #         clusteridx = idx % len(mid_clusters)
+    #         cand = mid_clusters[clusteridx][randint(0, len(mid_clusters[clusteridx]) - 1)]
+    #         for cluster in lowClusters:
+    #             if cand in cluster:
+    #                 break
+    #             else:
+    #                 res_pics.append(cand)
+    #         idx += 1
+    #
+    # while (len(res_low) < 50):
+    #     print "false pics < 50:", len(res_low)
+    #     idx = 0
+    #     for n in range(100 - len(res_low)):
+    #         clusteridx = idx % len(mid_clusters)
+    #         cand = mid_clusters[clusteridx][randint(0, len(mid_clusters[clusteridx]) - 1)]
+    #         for cluster in highClusters:
+    #             if cand in cluster:
+    #                 break
+    #             else:
+    #                 res_low.append(cand)
+    #         idx += 1
+
+    # write stats to report file in the root folder
+    # f = open(pool_path + "report.txt", "w+")
+    # for ID in similar_pics:
+    #     f.write("The score of Picture ")
+    #     f.write(image_paths[ID])
+    #     f.write(" = ")
+    #     f.write(str(score[0][ID]))
+    #     f.write("\n")
+    # f.close()
