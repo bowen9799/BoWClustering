@@ -52,7 +52,7 @@ des_list = []
 
 for i, image_path in enumerate(image_paths):
     im = cv2.imread(image_path)
-    print "Extract SIFT of %s image, %d of %d images" %(training_names[i], i, len(image_paths))
+    print "Extract SURF of %s image, %d of %d images" %(training_names[i], i, len(image_paths))
     kpts = fea_det.detect(im)
     kpts, des = des_ext.compute(im, kpts)
     # rootsift
@@ -86,7 +86,7 @@ for i in xrange(len(image_paths)):
         im_features[i][w] += 1
 
 # Perform Tf-Idf vectorization
-print "\nStart TF-ID vectorization..."
+print "\nStart TF-IDF vectorization..."
 nbr_occurences = np.sum( (im_features > 0) * 1, axis = 0)
 idf = np.array(np.log((1.0*len(image_paths)+1) / (1.0*nbr_occurences + 1)), 'float32')
 
