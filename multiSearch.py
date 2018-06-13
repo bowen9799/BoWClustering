@@ -7,21 +7,25 @@ import numpy as np
 import os
 from sklearn.externals import joblib
 from scipy.cluster.vq import *
+import turicreate as tc
+from turicreate import SFrame
+import pandas as pd
 
 from sklearn import preprocessing
 import shutil
 
 from PIL import Image
-from rootsift import RootSIFT
+# from rootsift import RootSIFT
 import matplotlib.pyplot as plt
 from sklearn import cluster
 from scipy.spatial import distance
 import sklearn.datasets
 from sklearn.preprocessing import StandardScaler
-from bic import compute_bic 
+# from bic import compute_bic 
 import sys, csv, time
 from random import randint
 from histsimilar import compare_all
+from similor_sort_py2 import similor_sort
 
 
 def search_single(img):
@@ -117,7 +121,7 @@ def search_single(img):
     
     if verbose:
         print "search_single() for image" + img + "generates %d lowpics, %d midpics and %d highpics\n" % (len(clusters[1]), len(clusters[2]), len(clusters[0]))
-        print "search_single() for image" + img + "gives current score matrix" + score_map
+        # print "search_single() for image" + img + "gives current score matrix" + score_map
     return clusters
 
 
@@ -138,7 +142,7 @@ def union(nested_list):
     return res
 
 
-def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
+def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise, knn_low, knn_high):
     """
     returns list of IDs of pics unioned as high-score clusters without intersection of the low-score clusters
     """
@@ -148,11 +152,18 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
     color_low = union(neg_colorwise)
     print "\nColorwise negative images: ", color_low
 
-    # res_high - res_low - res_mid
-    # res = [i for i in res_high if i not in res_low if i not in res_mid]
-    # res += res_mid
-    res = [i for i in res_high if i not in res_low 
-    if os.path.split(image_paths[i])[1] not in color_low]
+    # selection process
+    res = list()
+    for i in res_high:
+        if i not in res_low:
+            if os.path.split(image_paths[i])[1] not in color_low:
+                 if i not in knn_low:
+                    res.append(i)
+    for i in knn_high:
+        if i not in res_low:
+            if os.path.split(image_paths[i])[1] not in color_low:
+                 if i not in knn_low:
+                    res.append(i)
 
     # alt method: iterative filtering
     # res = res_high.append(res_mid)
@@ -165,7 +176,7 @@ def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise):
     return res, res_low, color_low
 
 
-def archive(selected_pics, low_pics, color_low, dir_path):
+def archive(selected_pics, low_pics, color_low, knn_low, knn_high, dir_path):
     if verbose:
         print "\n ==================archive()=================="
         print "Generating %d lowpics and %d highpics..." % (len(low_pics), len(selected_pics))
@@ -179,15 +190,25 @@ def archive(selected_pics, low_pics, color_low, dir_path):
         shutil.rmtree(new_path)
     low_pics_path = new_path + "/" + "below " + str(low_threshold)
     color_low_path = new_path + "/" + "color score under " + str(color_lowcut)
+    knn_low_path = new_path + "/knn_low_n=" + str(len(knn_low))
+    knn_high_path = new_path + "/knn_high_n=" + str(len(knn_high))
     os.mkdir(new_path)
     os.mkdir(low_pics_path)
     os.mkdir(color_low_path)
+    os.mkdir(knn_low_path)
+    os.mkdir(knn_high_path)
     for ID in selected_pics:
         shutil.copy(image_paths[ID], new_path)
     for ID in low_pics:
         shutil.copy(image_paths[ID], low_pics_path)
     for img_name in color_low:
         shutil.copy(os.path.split(dir_path)[0] + "/" + img_name, color_low_path)
+    for ID in knn_low:
+        # print "\rarchiving knn_low pic", image_paths[ID]
+        shutil.copy(image_paths[ID], knn_low_path)
+    for ID in knn_high:
+        # print "\rarchiving knn_high pic", image_paths[ID]
+        shutil.copy(image_paths[ID], knn_high_path)
     dump_csv(os.path.split(dir_path)[0] + "/" + "report.csv")
     return
 
@@ -227,6 +248,7 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--high_threshold", help="Ceiling value", required=False)
     parser.add_argument("-p", "--percentage", help="limit numbers", required=False)
     parser.add_argument("-c", "--color_lowcut", help="colorwise lowcut", required=False)
+    parser.add_argument("-k", "--knn_lowcut", required=False)
     parser.add_argument("-v", "--verbose")
 
     args = vars(parser.parse_args())
@@ -237,6 +259,8 @@ if __name__ == '__main__':
     low_threshold = float(args["low_threshold"]) if args["low_threshold"] else 0.15
     high_threshold = float(args["high_threshold"]) if args["high_threshold"] else 0.55
     verbose = True if args["verbose"] else False
+    knn_lowcut = float(args["knn_lowcut"]) if args["knn_lowcut"] else 0.1
+    knn_highcut = 0.1
 
     if verbose:
         print "low_t = %d, high_t = %d, pool_path = %s" % (low_threshold, high_threshold, pool_path)
@@ -267,9 +291,51 @@ if __name__ == '__main__':
         mid_clusters.append(clusters[2])
         neg_colorwise.append([t[0] for t in compare_all(imlet_path) if t[1] < color_lowcut])
 
-    res_pics, res_low, color_low = select(highClusters, lowClusters, mid_clusters, neg_colorwise)
+    # negative image ID from turicreate-KNN
+    filelist = os.listdir(os.path.split(pool_path)[0])
+    df = pd.DataFrame(columns=['name','path'])
+    for file in filelist:
+        if not "jpg" in str(file):
+            print file, " is not an image\n"
+            continue
+        path = os.path.join(os.path.split(pool_path)[0], file)
+        df = df.append([{'name':file, 'path':path}], ignore_index=True)
 
-    archive(res_pics, res_low, color_low, pool_path)
+    bm_list = os.listdir(pool_path)
+    bm = pd.DataFrame(columns=['name', 'path'])
+    for file in bm_list:
+        if not "jpg" in str(file):
+            print file, " is not an image\n"
+            continue
+        path = os.path.join(os.path.split(pool_path)[0], file)
+        bm = df.append([{'name':file, 'path':path}], ignore_index=True)
+
+    if verbose:
+        print "\nbf, dm = \n", df, bm
+    knn_res = similor_sort(df, bm, 0)
+    knn_res['index1'] = knn_res.index
+    if verbose:
+        print "\nknn_res = \n", knn_res
+    knn_sorted = knn_res.sort_values(by=['distance'], ascending=False, kind='mergesort')
+    knn_sorted_list = list(knn_sorted.values)
+    # knn_sorted_list = knn_sorted.values.tolist()
+    if verbose:
+        print "\nknn_sorted_list = \n", knn_sorted_list
+
+    knn_neg = list()
+    knn_pos = list()
+    for i in range(int(len(filelist) * knn_lowcut)):
+        knn_neg.append(knn_sorted_list[i][3])
+    idx = -1
+    for i in range(int(len(filelist) * knn_highcut)):
+        knn_pos.append(knn_sorted_list[idx][3])
+        idx -= 1
+    print "\rknn_neg = ", knn_neg
+    print "\rknn_pos = ", knn_pos
+
+    res_pics, res_low, color_low = select(highClusters, lowClusters, mid_clusters, neg_colorwise, knn_neg, knn_pos)
+
+    archive(res_pics, res_low, color_low, knn_neg, knn_pos, pool_path)
 
     # Print the time elapsed for the program
     elapsed_time = time.time() - start_time

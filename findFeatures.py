@@ -13,9 +13,7 @@ from rootsift import RootSIFT
 import math
 import time
 
-from PCV.tools import imtools, pca
 from PIL import Image, ImageDraw
-from PCV.localdescriptors import sift
 from pylab import *
 import glob
 from scipy.cluster.vq import *
@@ -41,6 +39,9 @@ numWords = 1000
 image_paths = []
 for training_name in training_names:
     image_path = os.path.join(train_path, training_name)
+    if os.path.isdir(image_path):
+	print "skipping non-image: ", image_path
+	continue
     image_paths += [image_path]
 
 # Create feature extraction and keypoint detector objects
@@ -52,7 +53,7 @@ des_list = []
 
 for i, image_path in enumerate(image_paths):
     im = cv2.imread(image_path)
-    print "Extract SURF of %s image, %d of %d images" %(training_names[i], i, len(image_paths))
+    print "Extract SIFT of %s image, %d of %d images" %(training_names[i], i, len(image_paths))
     kpts = fea_det.detect(im)
     kpts, des = des_ext.compute(im, kpts)
     # rootsift

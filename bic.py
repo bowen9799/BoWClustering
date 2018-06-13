@@ -4,6 +4,7 @@ import sklearn.datasets
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 
+
 def compute_bic(kmeans,X):
     """
     Computes the BIC metric for a given clusters
@@ -21,14 +22,14 @@ def compute_bic(kmeans,X):
     # assign centers and labels
     centers = [kmeans.cluster_centers_]
     labels  = kmeans.labels_
-    #number of clusters
+    # number of clusters
     m = kmeans.n_clusters
     # size of the clusters
     n = np.bincount(labels)
-    #size of data set
+    # size of data set
     N, d = X.shape
 
-    #compute variance for all clusters beforehand
+    # compute variance for all clusters beforehand
     cl_var = (1.0 / (N - m) / d) * sum([sum(distance.cdist(X[np.where(labels == i)], [centers[0][i]], 
              'euclidean')**2) for i in range(m)])
 
@@ -42,11 +43,10 @@ def compute_bic(kmeans,X):
     return(BIC)
 
 
-
 # IRIS DATA
 # iris = sklearn.datasets.load_iris()
 # X = iris.data[:, :4]  # extract only the features
-X = np.array([[1],[2],[3],[4],[10],[11],[12],[13],[100],[200],[300],[400]])
+# X = np.array([[1],[2],[3],[4],[10],[11],[12],[13],[100],[200],[300],[400]])
 # X = np.array([[1.        ] ,
 #  [0.852743  ] ,
 #  [0.8683993 ] ,
@@ -107,12 +107,12 @@ X = np.array([[1],[2],[3],[4],[10],[11],[12],[13],[100],[200],[300],[400]])
 # Xs = StandardScaler().fit_transform(X)
 # Y = iris.target
 
-ks = range(1,10)
-
-# run 9 times kmeans and save each result in the KMeans object
-KMeans = [cluster.KMeans(n_clusters = i, init="k-means++").fit(X) for i in ks]
-
-# now run for each cluster the BIC computation
-BIC = [compute_bic(kmeansi,X) for kmeansi in KMeans]
+# ks = range(1,10)
+#
+# # run 9 times kmeans and save each result in the KMeans object
+# KMeans = [cluster.KMeans(n_clusters = i, init="k-means++").fit(X) for i in ks]
+#
+# # now run for each cluster the BIC computation
+# BIC = [compute_bic(kmeansi,X) for kmeansi in KMeans]
 
 # print BIC
