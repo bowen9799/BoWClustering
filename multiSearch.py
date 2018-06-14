@@ -236,6 +236,12 @@ def dump_csv(file_path):
             a.writerow(content)
 
 
+def retrieval(source, classic):
+    imglist = source[paths]
+
+    return rank
+
+
 if __name__ == '__main__':
 
     # calculate time elapsed
