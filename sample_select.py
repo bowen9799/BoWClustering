@@ -1,15 +1,21 @@
-from nearst_neighbor import neighbor_sort
-import os
-import shutil
-import pandas as pd
-import argparse
-
+# -*- coding: utf-8 -*-
 
 ##
 ##python sample_select.py --dir src_dir
 ##
 
-def cluster(source, classic, selet_num, true_out, false_out):
+from nearst_neighbor import neighbor_sort
+from multiSearch import retrieval
+import os
+import shutil
+import pandas as pd
+import argparse
+import sys
+
+reload(sys)
+sys.setdefaultencoding("utf-8")
+
+def integrate(source, classic, selet_num, true_out, false_out):
     """ pickup positive sample and negtive sample
 
     :param source:      dataframe of source files
@@ -19,35 +25,72 @@ def cluster(source, classic, selet_num, true_out, false_out):
     :param false_out:   path of negtive sample
     :return: dataframe of scores
     """
+    print "\source = \n", source
+    print "\classic = \n", classic
+
+    source=source.append(classic)
+    source = source.drop_duplicates(['name'])
     neighbor = neighbor_sort(source, classic)
+    #neighbor = pd.DataFrame.from_csv("neighbor.csv");
+    #neighbor.to_csv("neighbor.csv")
 
     if not os.path.exists(true_out):
-        os.mkdir(true_out)
+        os.makedirs(true_out)
     if not os.path.exists(false_out):
-        os.mkdir(false_out)
+        os.makedirs(false_out)
 
-    num = neighbor.size()
+    num = len(neighbor)
     sorted_neighbor = neighbor.sort_values(by='distance')
+    knn_csv_path = os.path.split(true_out)[0] + "/knn_report.csv"
+    try:
+        os.remove(knn_csv_path)
+    except OSError:
+        pass
+    sorted_neighbor.to_csv(path_or_buf=knn_csv_path)
 
-    if selet_num > neighbor.size()/3:
-        selet_num = neighbor.size()/3
-    for i in range(num):
-        distance = sorted_neighbor.at[i, 'distance']
-        path = sorted_neighbor[i,'path']
+    print "\rKNN put into CSV. sorted neighbor: ", sorted_neighbor
 
-        if i < selet_num:
-            cp_path = os.path.join(true_out, os.path.basename(path))
-            shutil.copyfile(path, cp_path)
-        elif i > num-selet_num:
-            cp_path = os.path.join(false_out, os.path.basename(path))
-            shutil.copyfile(path, cp_path)
-        print(path, cp_path)
+    integrated = sorted_neighbor
+    del integrated['distance']
+    integrated.insert(2, 'classification', -2)
+    print "\rintegrated: ", integrated
+    res, lowf, lowc = retrieval(source, classic, 0.2, 0.05, 0.15, true_out, False)
+    print "\rboW put into CSV. num = ", num
+    for i in range(0, num):
+        if (sorted_neighbor.iat[i, 1]) in classic:
+            integrated.iat[i, 2] = 1
+        elif i < int(num * 0.3):
+            if sorted_neighbor.index.tolist()[i] not in lowc:
+                if sorted_neighbor.index.tolist()[i] not in lowf:
+                    integrated.iat[i, 2] = 1
+        elif int(num * 0.8) <= i < num:
+            integrated.iat[i, 2] = -1
+        else:
+            integrated.iat[i, 2] = 1 if sorted_neighbor.index.tolist()[i] in res else 0
+    print "integrated: ", integrated
+    int_csv_path = os.path.split(true_out)[0] + "/integrated_report.csv"
+    try:
+        os.remove(int_csv_path)
+    except OSError:
+        pass
+    integrated.to_csv(path_or_buf=int_csv_path)
+
+    if not os.path.exists(true_out):
+        os.makedirs(true_out)
+    if not os.path.exists(false_out):
+        os.makedirs(false_out)
+
+    for index, row in integrated.iterrows():
+        if row['classification'] == 1:
+            shutil.copy(row['path'], true_out)
+        if row['classification'] == -1:
+            shutil.copy(row['path'], false_out)
 
 
 if __name__ == '__main__':
-    dir = "./test/second"
+    dir = "/home/xufeng02/develop/venv/develop/test/second"
     out_dir = "./out_dir"
-    selet_num = 0
+    selet_num = 100
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir",    help="source to test")
     parser.add_argument("--selet_num",    help="src dir to copy")
@@ -65,17 +108,21 @@ if __name__ == '__main__':
         path=os.path.join(source_path,file)
         df=df.append([{'name':file, 'path':path}],ignore_index=True)
 
-    bm_path =  os.path.join(dir,"classic")
-    bm_list = os.listdir(source_path)
+    bm_path = os.path.join(dir,"classic")
+    bm_list = os.listdir(bm_path)
     bm = pd.DataFrame(columns=['name', 'path'])
     for file in bm_list:
-        path=os.path.join(source_path,file)
-        bm=df.append([{'name':file, 'path':path}],ignore_index=True)
+        path=os.path.join(bm_path,file)
+        #shutil.copy(os.path.join(bm_path, file), source_path)
+        bm = bm.append([{'name':file, 'path':path}],ignore_index=True)
+
+    df.drop_duplicates()
 
     true_dir = os.path.join(dir, "true")
     false_dir = os.path.join(dir, "false")
 
-    cluster(df, bm, 100, true_dir, false_dir)
+    integrate(df, bm, 100, true_dir, false_dir)
+
 
 
 

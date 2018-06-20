@@ -23,6 +23,11 @@ import time
 from turicreate import SFrame
 import pandas as pd
 import numpy as np
+import sys
+
+reload(sys)
+sys.setdefaultencoding("utf-8")
+tc.config.set_num_gpus(0)
 
 def neighbor_sort(sourceData,classicData):
     """ get distance the distance of source pictures
@@ -41,7 +46,7 @@ def neighbor_sort(sourceData,classicData):
         ref_data = ref_data.append(SFrame({'path':[path],'image':[img]}))
     ref_data = ref_data.add_row_number()
 
-    print ref_data
+    print "\nref_data = \n", ref_data
 
     query_data = SFrame()
     for index, row in classicData.iterrows():
@@ -60,7 +65,7 @@ def neighbor_sort(sourceData,classicData):
         ref_label = image['reference_label']
         distance = image['distance']
         query_label = image['query_label']
-        ret_array[query_label][ref_label] = distance;
+        ret_array[query_label][ref_label] = distance
 
     mean = np.mean(ret_array, axis=0)
     sourceData.insert(2,'distance',(mean))
@@ -68,6 +73,7 @@ def neighbor_sort(sourceData,classicData):
 
     elapsed_time = time.time() - start_time
     print ("Time elapsed = %d"%(elapsed_time))
+    # print sourceData
     return sourceData
 
 if __name__ == '__main__':

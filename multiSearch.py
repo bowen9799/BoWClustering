@@ -10,6 +10,7 @@ from scipy.cluster.vq import *
 import turicreate as tc
 from turicreate import SFrame
 import pandas as pd
+from findFeatures import find_features
 
 from sklearn import preprocessing
 import shutil
@@ -28,13 +29,18 @@ from histsimilar import compare_all
 from similor_sort_py2 import similor_sort
 
 
-def search_single(img):
+def search_single(img, high_percentage, low_percentage, verbose, im_features, image_paths, idf, numWords, voc, score_map):
     """
     returns:
         highScoreCluster, list of paths of pics with high score, such as
         >= 0.5; 
         lowScoreCluster, ibid.;
     """
+
+    # Create feature extraction and keypoint detector objects
+    fea_det = cv2.FeatureDetector_create("SURF")
+    des_ext = cv2.DescriptorExtractor_create("SURF")
+
     print "Searching similar pics for pool image %s...\n" % img
     im = cv2.imread(img)
     kpts = fea_det.detect(im)
@@ -71,58 +77,57 @@ def search_single(img):
 
     clusters = [[],[],[]]
 
-    for i, ID in enumerate(rank_id[0][0:len(image_paths)]):
+    if high_percentage > 0:
+        count_mid = 0
+        for i, ID in enumerate(rank_id[0][0:len(image_paths)]):
+
+            # put score into score map
+            if score_map.has_key(ID):
+                score_map[ID].append(score[0][ID])
+            else:
+                # print "adding %d into scoremap for the first time" % ID
+                score_map[ID] = [score[0][ID]]
+
+            if i <= len(image_paths) * high_percentage:
+                # if score[0][ID] <= 0.42:
+                #         print "IMAGE " + img + " MAY NOT BE A GOOD CANDIDATE.\n"
+                #         sys.exit()
+                if verbose:
+                    print "**HIGH** ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
+                clusters[0].append(ID)
+            elif i >= len(image_paths) * (1 - low_percentage):
+                if verbose:
+                    print "**LOW** ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
+                clusters[1].append(ID)
+            else:
+                count_mid += 1
+                clusters[2].append(ID)
         if verbose:
-            print "ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
+            print "MID CLUSTER SIZE = ", count_mid
+    # else:
+    #     for i, ID in enumerate(rank_id[0][0:len(image_paths)]):
+    #         if verbose:
+    #             print "ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
 
-        if args["percentage"]:
-            count_mid = 0
-            for i, ID in enumerate(rank_id[0][0:len(image_paths)]):
-
-                # put score into score map
-                if score_map.has_key(ID):
-                    score_map[ID].append(score[0][ID])
-                else:
-                    # print "adding %d into scoremap for the first time" % ID
-                    score_map[ID] = [score[0][ID]]
-
-                if i <= len(image_paths) * 0.05:
-                    # if score[0][ID] <= 0.42:
-                    #         print "IMAGE " + img + " MAY NOT BE A GOOD CANDIDATE.\n"
-                    #         sys.exit()
-                    if verbose:
-                        print "**HIGH** ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
-                    clusters[0].append(ID)
-                elif score[0][ID] <= 0.15:
-                    if verbose:
-                        print "**LOW** ID = ", ID, " Name = ", image_paths[ID], " Score = ", score[0][ID], "\r"
-                    clusters[1].append(ID)
-                else:
-                    count_mid += 1
-                    clusters[2].append(ID)
-            if verbose:
-                print "MID CLUSTER SIZE = ", count_mid
-            break
-
-        # manually cluster by score
-        # Returns list of lists where each sublist is a cluster of IDs, and length of the master list is numClusters.
-        if score[0][ID] >= high_threshold:
-            if verbose:
-                print "Putting picture %s into HIGH" % image_paths[ID]
-            clusters[0].append(ID)
-        elif score[0][ID] <= low_threshold:
-            if verbose:
-                print "Putting picture %s into LOW" % image_paths[ID]
-            clusters[1].append(ID)
-        elif high_threshold > score[0][ID] > low_threshold: 
-            if verbose:
-                print "Putting picture %s into MID" % image_paths[ID]
-            clusters[2].append(ID)
+    #         # manually cluster by score
+    #         # Returns list of lists where each sublist is a cluster of IDs, and length of the master list is numClusters.
+    #         if score[0][ID] >= high_threshold:
+    #             if verbose:
+    #                 print "Putting picture %s into HIGH" % image_paths[ID]
+    #             clusters[0].append(ID)
+    #         elif score[0][ID] <= low_threshold:
+    #             if verbose:
+    #                 print "Putting picture %s into LOW" % image_paths[ID]
+    #             clusters[1].append(ID)
+    #         elif high_threshold > score[0][ID] > low_threshold:
+    #             if verbose:
+    #                 print "Putting picture %s into MID" % image_paths[ID]
+    #             clusters[2].append(ID)
     
     if verbose:
         print "search_single() for image" + img + "generates %d lowpics, %d midpics and %d highpics\n" % (len(clusters[1]), len(clusters[2]), len(clusters[0]))
         # print "search_single() for image" + img + "gives current score matrix" + score_map
-    return clusters
+    return clusters, score_map
 
 
 def intersection(nested_list):
@@ -142,7 +147,7 @@ def union(nested_list):
     return res
 
 
-def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise, knn_low, knn_high):
+def select(highScoreClusters, lowScoreClusters, mid_clusters, neg_colorwise, knn_low, knn_high, image_paths, verbose):
     """
     returns list of IDs of pics unioned as high-score clusters without intersection of the low-score clusters
     """
@@ -209,20 +214,21 @@ def archive(selected_pics, low_pics, color_low, knn_low, knn_high, dir_path):
     for ID in knn_high:
         # print "\rarchiving knn_high pic", image_paths[ID]
         shutil.copy(image_paths[ID], knn_high_path)
-    dump_csv(os.path.split(dir_path)[0] + "/" + "report.csv")
+    dump_csv(os.path.split(dir_path)[0] + "/" + "bowsurf_report.csv")
     return
 
 
-def dump_csv(file_path):
+def dump_csv(file_path, score_map, csv_header, image_paths, res_pics, neg_colorwise):
     """
     Put scores into csv report file
     :param file_path: path to csv inclusive of name
     :return: none
     """
     print "Generate CSV report with score map", score_map
-    if os.path.exists('\report.csv'):
-        print "\rReplacing existing report.csv file"
-        shutil.rmtree('\report.csv')
+    try:
+        os.remove(file_path)
+    except OSError:
+        pass
     with open(file_path, 'wb') as f:
         a = csv.writer(f, delimiter=',')
         a.writerow(csv_header)
@@ -236,10 +242,55 @@ def dump_csv(file_path):
             a.writerow(content)
 
 
-def retrieval(source, classic):
-    imglist = source[paths]
+def retrieval(sourceData, classic, color_lowcut, high_percentage, low_percentage, out_dir, verbose):
+    start_time = time.time()
+    imgpaths = list()
+    for index, row in sourceData.iterrows():
+        # print row
+        path = row['path']
+        imgpaths.append(path)
 
-    return rank
+    find_features(imgpaths)
+
+    # Load the classifier, class names, scaler, number of clusters and vocabulary
+    im_features, image_paths, idf, numWords, voc = joblib.load("bof.pkl")
+
+    highClusters = []
+    lowClusters = []
+    mid_clusters = []
+    neg_colorwise = []
+    csv_header = ['Image Name']
+
+    # score map to put into csv in the future
+    score_map = {}
+
+    for index, row in classic.iterrows():
+        imlet_path = row['path']
+        print "imlet_path = ", imlet_path
+        csv_header.append(imlet_path)
+        if verbose:
+            print imlet_path
+        clusters, score_map = search_single(imlet_path, high_percentage, low_percentage, 
+        verbose, im_features, image_paths, idf, numWords, voc, score_map)
+        highClusters.append(clusters[0])
+        lowClusters.append(clusters[1])
+        mid_clusters.append(clusters[2])
+        neg_colorwise.append([t[0] for t in compare_all(imlet_path) if t[1] < color_lowcut])
+
+    knn_neg = list() 
+    knn_pos = list()
+
+    res_pics, res_low, color_low = select(highClusters, lowClusters, mid_clusters, neg_colorwise, 
+    knn_neg, knn_pos, image_paths, verbose)
+
+    elapsed_time = time.time() - start_time
+    print "Time elapsed = ", elapsed_time
+
+    # archive(res_pics, rew_low, color_low, knn_neg, knn_pos, dir)
+    dump_csv(os.path.split(out_dir)[0] + "/" + "bowsurf_report.csv", score_map, csv_header, 
+    image_paths, res_pics, neg_colorwise)
+
+    return res_pics, res_low, color_low
 
 
 if __name__ == '__main__':
@@ -291,7 +342,7 @@ if __name__ == '__main__':
         imlet_path = os.path.split(pool_path)[0] + "/" + imlet_name
         if verbose:
             print imlet_path
-        clusters = search_single(imlet_path)
+        clusters = search_single(imlet_path, 0.05, 0.1, False, im_features, image_paths, idf, numWords, voc)
         highClusters.append(clusters[0])
         lowClusters.append(clusters[1])
         mid_clusters.append(clusters[2])
